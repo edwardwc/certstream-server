@@ -10,6 +10,16 @@ defmodule Certstream.ClientManager do
   @full_stream_url Application.fetch_env!(:certstream, :full_stream_url)
   @domains_only_url Application.fetch_env!(:certstream, :domains_only_url)
 
+  @allowed_domains (fn ->
+    System.get_env("ALLOWED_DOMAINS", "")
+    |> String.split(",", trim: true)
+    |> Enum.reject(&(&1 == ""))
+    |> case do
+      [] -> nil
+      domains -> domains
+    end
+  end).()
+
   def start_link(_opts) do
     Logger.info("Starting #{__MODULE__}...")
     Agent.start_link(fn -> %{} end, name: __MODULE__)
@@ -67,6 +77,7 @@ defmodule Certstream.ClientManager do
 
     certificates = entries
                      |> Enum.map(&(%{:message_type => "certificate_update", :data => &1}))
+                     |> Enum.filter(&domain_filter/1) # added filtering step
 
     serialized_certificates_full = certificates
                                      |> Enum.map(&Jason.encode!/1)
@@ -95,6 +106,16 @@ defmodule Certstream.ClientManager do
           _ ->                        send_bundle(serialized_certificates_lite, client_state.po_box)
         end
       end)
+  end
+
+  defp domain_filter(cert) do
+    domains = get_in(cert, [:data, :leaf_cert, :all_domains])
+    case @allowed_domains do
+      nil -> true
+      _ -> Enum.any?(domains, fn domain ->
+        Enum.any?(@allowed_domains, fn allowed_domain -> String.contains?(domain, allowed_domain) end)
+      end)
+    end
   end
 
   def send_bundle(entries, po_box) do

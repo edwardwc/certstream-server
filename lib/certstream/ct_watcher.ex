@@ -9,8 +9,6 @@ defmodule Certstream.CTWatcher do
   use GenServer
   use Instruments
 
-  @default_http_options [timeout: 10_000, recv_timeout: 10_000, ssl: [{:versions, [:'tlsv1.2']}], follow_redirect: true]
-
   def child_spec(log) do
     %{
       id: __MODULE__,
@@ -18,6 +16,8 @@ defmodule Certstream.CTWatcher do
       restart: :permanent,
     }
   end
+
+  @default_http_options [timeout: 10_000, recv_timeout: 10_000, follow_redirect: true]
 
   def start_and_link_watchers(name: supervisor_name) do
     Logger.info("Initializing CT Watchers...")
@@ -33,7 +33,7 @@ defmodule Certstream.CTWatcher do
       |> Enum.each(fn operator ->
             operator
             |> Map.get("logs")
-            |> Enum.each(fn log -> 
+            |> Enum.each(fn log ->
                 log = Map.put(log, "operator_name", operator["name"])
                 DynamicSupervisor.start_child(supervisor_name, child_spec(log))
             end)
@@ -139,7 +139,7 @@ defmodule Certstream.CTWatcher do
         cert_count = current_tree_size - state[:tree_size]
         Instruments.increment("certstream.worker", cert_count, tags: ["url:#{state[:url]}"])
         Instruments.increment("certstream.aggregate_owners_count", cert_count, tags: [~s(owner:#{state[:operator]["operator_name"]})])
-        
+
         broadcast_updates(state, current_tree_size)
 
         state
